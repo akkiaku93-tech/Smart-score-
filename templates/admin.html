@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Enter Scores</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container mt-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Teacher Panel (Add Marks)</h4>
+                        <a href="/" class="btn btn-sm btn-outline-light">Home</a>
+                    </div>
+                    <div class="card-body p-4">
+                        {% with messages = get_flashed_messages() %}
+                          {% if messages %}
+                            {% for message in messages %}
+                              <div class="alert alert-success">{{ message }}</div>
+                            {% endfor %}
+                          {% endif %}
+                        {% endwith %}
+
+                        <form action="/admin" method="POST">
+                            <div class="mb-3">
+                                <label class="form-label">Roll Number</label>
+                                <input type="text" class="form-control" name="roll_no" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Student Name</label>
+                                <input type="text" class="form-control" name="name" required>
+                            </div>
+                            <hr>
+                            <h5>Subjects Marks (Max: 100)</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Math</label>
+                                <input type="number" class="form-control" name="math" min="0" max="100" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Science</label>
+                                <input type="number" class="form-control" name="science" min="0" max="100" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">English</label>
+                                <input type="number" class="form-control" name="english" min="0" max="100" required>
+                            </div>
+                            <button type="submit" class="btn btn-dark w-100 btn-lg mt-3">Save Student Record</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+  </html>
+  
