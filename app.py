@@ -1,13 +1,29 @@
 from flask import Flask, render_template, request, redirect, flash
-import sqlite3
+import os
+import psycopg2
 
 app = Flask(__name__)
 app.secret_key = "super_secret_key_for_shares"
 
-# डेटाबेस सेटअप - 5 सब्जेक्ट्स के साथ टेबल बनाना
+# रेलवे के PostgreSQL से कनेक्ट करने का फंक्शन
+def get_db_connection():
+    # रेलवे ऑटोमैटिकली DATABASE_URL एनवायरनमेंट वेरिएबल देता है
+    # अगर लोकल चला रहे हैं तो बैकअप के लिए पुराना SQLite लिंक (Testing के लिए)
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    
+    if DATABASE_URL:
+        # Postgres Connection
+        return psycopg2.connect(DATABASE_URL, sslmode='require')
+    else:
+        # अगर कभी लोकल रन करें तो एरर न आए (सिर्फ सेफ्टी के लिए)
+        import sqlite3
+        return sqlite3.connect("database.db")
+
+# डेटाबेस सेटअप - Postgres सिंटैक्स के साथ टेबल बनाना
 def init_db():
-    conn = sqlite3.connect("database.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
+    # Postgres में SERIAL PRIMARY KEY का यूज होता है ऑटो-इन्क्रीमेंट के लिए
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS scores (
             roll_no TEXT PRIMARY KEY,
@@ -23,13 +39,14 @@ def init_db():
         )
     ''')
     conn.commit()
+    cursor.close()
     conn.close()
 
-# ऐप स्टार्ट होते ही खुद-ब-खुद टेबल बनाने के लिए
+# ऐप स्टार्ट होते ही टेबल चेक करना/बनाना
 with app.app_context():
     init_db()
 
-# होम पेज (सिर्फ स्टूडेंट सर्च - एडमिन बटन हटा दिया गया है)
+# होम पेज (स्टूडेंट सर्च)
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -39,10 +56,11 @@ def index():
 def search():
     roll_no = request.form.get('roll_no').strip()
     
-    conn = sqlite3.connect("database.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scores WHERE roll_no = ?", (roll_no,))
+    cursor.execute("SELECT * FROM scores WHERE roll_no = %s", (roll_no,))
     student = cursor.fetchone()
+    cursor.close()
     conn.close()
     
     if student:
@@ -63,7 +81,7 @@ def search():
         flash("Roll Number नहीं मिला! कृपया सही रोल नंबर डालें।")
         return redirect('/')
 
-# सीक्रेट एडमिन पैनल (टीचर के लिए मार्क्स एंट्री - सिर्फ /admin लिंक से खुलेगा)
+# एडमिन पैनल (टीचर के लिए मार्क्स एंट्री)
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if request.method == 'POST':
@@ -75,11 +93,9 @@ def admin():
         hindi = int(request.form.get('hindi'))
         social_science = int(request.form.get('social_science'))
         
-        # 5 सब्जेक्ट्स का टोटल और परसेंटेज लॉजिक
         total = math + science + english + hindi + social_science
         percentage = round((total / 500) * 100, 2)
         
-        # फेल और डिवीज़न (1st, 2nd, 3rd) का लॉजिक
         if math < 33 or science < 33 or english < 33 or hindi < 33 or social_science < 33:
             status = "FAILED"
         elif percentage >= 60:
@@ -92,15 +108,30 @@ def admin():
             status = "FAILED"
             
         try:
-            conn = sqlite3.connect("database.db")
+            conn = get_db_connection()
             cursor = conn.cursor()
+            
+            # Postgres में INSERT OR REPLACE की जगह ON CONFLICT का यूज होता है
             cursor.execute('''
-                INSERT OR REPLACE INTO scores (roll_no, name, math, science, english, hindi, social_science, total, percentage, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO scores (roll_no, name, math, science, english, hindi, social_science, total, percentage, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (roll_no) 
+                DO UPDATE SET 
+                    name = EXCLUDED.name,
+                    math = EXCLUDED.math,
+                    science = EXCLUDED.science,
+                    english = EXCLUDED.english,
+                    hindi = EXCLUDED.hindi,
+                    social_science = EXCLUDED.social_science,
+                    total = EXCLUDED.total,
+                    percentage = EXCLUDED.percentage,
+                    status = EXCLUDED.status
             ''', (roll_no, name, math, science, english, hindi, social_science, total, percentage, status))
+            
             conn.commit()
+            cursor.close()
             conn.close()
-            flash(f"Roll No {roll_no} का डेटा सफलतापूर्वक सेव हो गया!")
+            flash(f"Roll No {roll_no} का डेटा सफलतापूर्वक परमानेंटली सेव हो गया!")
         except Exception as e:
             flash(f"Error: {str(e)}")
             
