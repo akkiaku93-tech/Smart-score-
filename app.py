@@ -11,7 +11,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS scores (
             roll_no TEXT PRIMARY KEY,
-            name TEXT NOT EXISTS,
+            name TEXT,
             math INTEGER,
             science INTEGER,
             english INTEGER,
@@ -22,7 +22,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ऐप स्टार्ट होते ही खुद-ब-खुद टेबल बनाने के लिए (Gunicorn/Docker के लिए ज़रूरी)
+# ऐप स्टार्ट होते ही खुद-ब-खुद टेबल बनाने के लिए
 with app.app_context():
     init_db()
 
