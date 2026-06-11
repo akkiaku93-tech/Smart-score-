@@ -22,6 +22,10 @@ def init_db():
     conn.commit()
     conn.close()
 
+# ऐप स्टार्ट होते ही खुद-ब-खुद टेबल बनाने के लिए (Gunicorn/Docker के लिए ज़रूरी)
+with app.app_context():
+    init_db()
+
 # होम पेज (स्टूडेंट सर्च)
 @app.route('/')
 def index():
@@ -39,7 +43,6 @@ def search():
     conn.close()
     
     if student:
-        # डेटा को डिक्शनरी फॉर्मेट में पास करना ताकि HTML में आसानी हो
         student_data = {
             "roll_no": student[0],
             "name": student[1],
@@ -64,7 +67,6 @@ def admin():
         science = int(request.form.get('science'))
         english = int(request.form.get('english'))
         
-        # कैलकुलेशन
         total = math + science + english
         percentage = round((total / 300) * 100, 2)
         
@@ -86,5 +88,5 @@ def admin():
     return render_template('admin.html')
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)
+    
