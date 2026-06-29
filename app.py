@@ -3,14 +3,15 @@ import os
 import psycopg2
 from psycopg2.extras import DictCursor
 from functools import wraps
+from werkzeug.security import check_password_hash, generate_password_hash # Ye line add hui
 
 app = Flask(__name__)
 
 # SECRET_KEY ab Railway Environment Variable se aayega
 app.secret_key = os.environ.get('SECRET_KEY', "fallback_secret_key_change_me")
 
-# ADMIN PASSWORD bhi Railway Variable se aayega
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', "admin@123")
+# ADMIN PASSWORD HASH ab Railway Variable se aayega
+ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH', generate_password_hash("admin@123")) # Ye line change hui
 
 # Login Required Decorator - Admin pages ko protect karta hai
 def login_required(f):
@@ -53,7 +54,8 @@ with app.app_context():
 def login():
     if request.method == 'POST':
         password = request.form.get('password')
-        if password == ADMIN_PASSWORD:
+        # Yaha main change hai - hash check hoga ab
+        if password and check_password_hash(ADMIN_PASSWORD_HASH, password):
             session['logged_in'] = True
             flash("Login Successful!")
             return redirect('/admin/view')
