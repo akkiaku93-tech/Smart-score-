@@ -1,57 +1,82 @@
-from flask import Flask, render_template, request, redirect, flash
+from flask import Flask, render_template, request, redirect, flash, session, url_for
 import os
 import psycopg2
 from psycopg2.extras import DictCursor
+from functools import wraps
 
 app = Flask(__name__)
-app.secret_key = "super_secret_key_for_shares"
+
+# SECRET_KEY ab Railway Environment Variable se aayega
+app.secret_key = os.environ.get('SECRET_KEY', "fallback_secret_key_change_me")
+
+# ADMIN PASSWORD bhi Railway Variable se aayega
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', "admin@123")
+
+# Login Required Decorator - Admin pages ko protect karta hai
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            flash("Pehle Login Karo!")
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # रेलवे के PostgreSQL से कनेक्ट करने का फंक्शन
 def get_db_connection():
     DATABASE_URL = os.environ.get('DATABASE_URL')
-
     if DATABASE_URL:
         return psycopg2.connect(DATABASE_URL, sslmode='require')
     else:
         import sqlite3
         return sqlite3.connect("database.db")
 
-# डेटाबेस सेटअप - Postgres सिंटैक्स के साथ टेबल बनाना
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS scores (
-            roll_no TEXT PRIMARY KEY,
-            name TEXT,
-            math INTEGER,
-            science INTEGER,
-            english INTEGER,
-            hindi INTEGER,
-            social_science INTEGER,
-            total INTEGER,
-            percentage REAL,
-            status TEXT
+            roll_no TEXT PRIMARY KEY, name TEXT, math INTEGER, science INTEGER,
+            english INTEGER, hindi INTEGER, social_science INTEGER, total INTEGER,
+            percentage REAL, status TEXT
         )
     ''')
     conn.commit()
     cursor.close()
     conn.close()
 
-# ऐप स्टार्ट होते ही टेबल चेक करना/बनाना
 with app.app_context():
     init_db()
 
-# होम पेज (स्टूडेंट सर्च)
+# Admin Login Page
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            flash("Login Successful!")
+            return redirect('/admin/view')
+        else:
+            flash("Galat Password!")
+    return render_template('login.html')
+
+# Logout
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    flash("Logout Ho Gaya")
+    return redirect('/')
+
+# होम पेज - Student Search - Public hai
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# रिजल्ट देखने का लॉजिक
+# Result Search - Public hai
 @app.route('/search', methods=['POST'])
 def search():
     roll_no = request.form.get('roll_no').strip()
-
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM scores WHERE roll_no = %s", (roll_no,))
@@ -68,11 +93,12 @@ def search():
         }
         return render_template('result.html', student=student_data)
     else:
-        flash("Roll Number नहीं मिला! कृपया सही रोल नंबर डालें।")
+        flash("Roll Number नहीं मिला!")
         return redirect('/')
 
-# एडमिन पैनल (टीचर के लिए मार्क्स एंट्री)
+# Admin Panel - PASSWORD PROTECTED
 @app.route('/admin', methods=['GET', 'POST'])
+@login_required
 def admin():
     if request.method == 'POST':
         roll_no = request.form.get('roll_no').strip()
@@ -88,43 +114,35 @@ def admin():
 
         if math < 33 or science < 33 or english < 33 or hindi < 33 or social_science < 33:
             status = "FAILED"
-        elif percentage >= 60:
-            status = "1st DIVISION"
-        elif percentage >= 45:
-            status = "2nd DIVISION"
-        elif percentage >= 33:
-            status = "3rd DIVISION"
-        else:
-            status = "FAILED"
+        elif percentage >= 60: status = "1st DIVISION"
+        elif percentage >= 45: status = "2nd DIVISION"
+        elif percentage >= 33: status = "3rd DIVISION"
+        else: status = "FAILED"
 
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
             cursor.execute('''
                 INSERT INTO scores (roll_no, name, math, science, english, hindi, social_science, total, percentage, status)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (roll_no)
-                DO UPDATE SET
+                ON CONFLICT (roll_no) DO UPDATE SET
                     name = EXCLUDED.name, math = EXCLUDED.math, science = EXCLUDED.science,
                     english = EXCLUDED.english, hindi = EXCLUDED.hindi,
                     social_science = EXCLUDED.social_science, total = EXCLUDED.total,
                     percentage = EXCLUDED.percentage, status = EXCLUDED.status
             ''', (roll_no, name, math, science, english, hindi, social_science, total, percentage, status))
-
             conn.commit()
             cursor.close()
             conn.close()
-            flash(f"Roll No {roll_no} का डेटा सफलतापूर्वक परमानेंटली सेव हो गया!")
+            flash(f"Roll No {roll_no} का डेटा सेव हो गया!")
         except Exception as e:
             flash(f"Error: {str(e)}")
-
         return redirect('/admin')
-
     return render_template('admin.html')
 
-# NEW: Saare Students Dekhne Wala Page
+# View All Students - PASSWORD PROTECTED
 @app.route('/admin/view')
+@login_required
 def view_all():
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=DictCursor)
@@ -134,8 +152,9 @@ def view_all():
     conn.close()
     return render_template('view_all.html', students=students)
 
-# NEW: Student Delete Karne Ka Route
+# Delete Student - PASSWORD PROTECTED
 @app.route('/admin/delete/<roll_no>')
+@login_required
 def delete_student(roll_no):
     try:
         conn = get_db_connection()
